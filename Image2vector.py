@@ -91,7 +91,7 @@ def _load_vector(filenames, captions):
     # load filename and caption from dir val
 
     # file stopword_en
-    f = open(pathstopword, 'r')
+    f = open(stopword, 'r')
     stopwords = [line.strip() for line in f.readlines()]
     f.close()
 
