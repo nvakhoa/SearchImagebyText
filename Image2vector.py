@@ -2,14 +2,17 @@ import coco
 from cache import cache
 
 
-import os, time, re
+import os, time, re, math
 import matplotlib.pyplot as plt
 from PIL import Image
 import numpy as np
+from spacy.lang.en import English
 
+nlp = English()
 
-stopword = '\stopwords_en.txt'
+stopword = 'stopwords_en.txt'
 dir_path = 'data\coco'
+
 
 def set_path_stopword(newpath):
     global stopword
@@ -52,7 +55,7 @@ def load_image(path, size=None):
     return img
 
 
-def show_image(idx, filenames_val, captions_val):
+def show_image(idx, filenames_val, captions_val, cap=True):
 
 
     dir = coco.val_dir
@@ -63,8 +66,9 @@ def show_image(idx, filenames_val, captions_val):
     path = os.path.join(dir, filename)
 
     # Print the captions for this image.
-    for caption in captions:
-        print(caption)
+    if cap:
+        for caption in captions:
+            print(caption)
 
     # Load the image and plot it.
     img = load_image(path)
@@ -72,11 +76,18 @@ def show_image(idx, filenames_val, captions_val):
     plt.show()
 
 
+def lemma_spacy(str_input):
+    doc = nlp(str_input.lower())
+    lemma =' '.join(i.lemma_  for i in doc)
+    return re.sub( "[^\w]", " ",lemma).split()
+
 def _Image2data(captions, stopwords):
     data = dict()
     voc = []
     for caption in captions:
-        listCap = remove_stopwords(re.sub("[^\w]", " ", caption.lower()).split(),stopwords)
+        #listCap = remove_stopwords(re.sub( "[^\w]", " ",caption).split(),stopwords)
+        listCap = remove_stopwords(lemma_spacy(caption),stopwords)
+
         voc.extend(listCap)
         for word in listCap:
             t = data.get(word)
@@ -117,6 +128,24 @@ def _load_vector(filenames, captions):
                 invert[i].append(j)
 
     Vector = [(BoW[i], voc[i], invert[i]) for i in range(number_voc)]
+
+    f=open('BOW.txt','w')
+    cont =''
+    for i in BoW:
+        cont +=  ' '.join(map(str,i)) + '\n'
+    f.write(cont)
+    f.close()
+
+    f=open('voc.txt','w')
+    cont = '\n'.join(map(str,voc))
+    f.write(cont)
+    f.close()
+
+    f=open('invert.txt','w')
+    cont = '\n'.join(map(str,invert))
+    f.write(cont)
+    f.close()
+
     zBoW, zvoc, zinvert = zip(*Vector)
     return zBoW, zvoc, zinvert
 
@@ -126,7 +155,39 @@ def load_vector(filenames, captions):
 
     vectors = cache(cache_path=cache_path,
                     fn=_load_vector,
-                    filenames_val= filenames,
-                    captions_val= captions)
+                    filenames= filenames,
+                    captions= captions)
     return vectors
 
+def _tf_idf(filenames,captions):
+
+    bow, voc, invert = load_vector(filenames, captions)
+    number_file = len(filenames)
+    number_voc = len(voc)
+
+    tf = np.zeros((number_voc, number_file))
+    idf = np.zeros(number_voc)
+
+    for i in range(number_voc):
+        idf[i] = round(1+ math.log(number_file/len(invert[i])), 3)
+        for j in range(number_file):
+            if bow[i][j] != 0:
+                tf[i][j] = round(1 + math.log(bow[i][j]), 3)
+
+    records = [(np.dot(tf[i],idf[i]), idf[i])
+            for i in range(len(idf))]
+
+    weight, _idf = zip(*records)
+
+    return weight, _idf, voc, invert
+
+
+def load_weight(filenames, captions):
+    cache_filename = 'weight.pkl'
+    cache_path = os.path.join(dir_path, cache_filename)
+
+    weight = cache(cache_path= cache_path,
+                   fn=_tf_idf,
+                   filenames=filenames,
+                   captions=captions)
+    return weight
